@@ -18,13 +18,10 @@ static bool logging = true;
 static long last_ms = 0;
 static int num_run = 0, num_updates = 0;
 
-double ppmMin = 1000, ppmMax = 2000;
-double ppmMid = (ppmMax+ppmMid)/2;
+const double ppmMin = 1000, ppmMax = 2000, ppmMid = 1500;
 
-double wiimMin = 0, wiimMax = 52;
-double wiimMid = (wiimMid + wiimMax)/2;
-double wiimDead = 3; // deadzone of one side, ex. 3 = 3 on each side, not 3 total
-double wiiAccel;
+const double wiimMin = 102, wiimMax = 153, wiimMid = 127.5, wiimDead = 3; // deadzone of one side, ex. 3 = 3 on each side, not 3 total
+double wiiPos;
 
 Servo Lmotor;
 Servo Rmotor;
@@ -32,22 +29,24 @@ Servo Rmotor;
 const uint8_t Lmotor_pin = 5, Rmotor_pin = 4;
 
 double Mthrottle = 1500, Lthrottle = 1500, Rthrottle = 1500;
-double accelRate = 100, decelRate = 200; // per second
+const double accelRate = 100, decelRate = 200; // per second
 long previousMillis;
+bool wiimoteAvailable = false;
 
 double maxTurnRatio = 0.1; // when turning, one side spins at Mthrottle, second spins up to Mthrottle*maxTurnRatio
 
-bool accel, brake, safety, boost;
+bool accel, brake, safety, boost, reverse;
 
 void update_wiimote()
 {
     wiimote.task();
     num_run++;
+    wiimoteAvailable = wiimote.available() > 0;
 
-    if (wiimote.available() > 0) 
+    if (wiimoteAvailable) 
     {
         ButtonState  button  = wiimote.getButtonState();
-        AccelState   accel   = wiimote.getAccelState();
+        AccelState   cur_accel   = wiimote.getAccelState();
         NunchukState nunchuk = wiimote.getNunchukState();
 
         num_updates++;
@@ -73,8 +72,9 @@ void update_wiimote()
             boost = ca;
 
       
-            Serial.printf(", wiimote.axis: %3d/%3d/%3d", accel.xAxis, accel.yAxis, accel.zAxis);
-            wiiAccel = accel.xAxis;
+            // Serial.printf(", wiimote.axis: %3d/%3d/%3d", cur_accel.xAxis, cur_accel.yAxis, cur_accel.zAxis);
+            wiiPos = cur_accel.yAxis;
+            // Serial.printf("NEW: %.1f\n", wiiPos);
         }
     }
 
@@ -103,8 +103,8 @@ void setup()
   last_ms = millis();
 
   Serial.println("Starting PPM");
-  Lmotor.attach(Lmotor_pin);
-  Rmotor.attach(Rmotor_pin);
+  // Lmotor.attach(Lmotor_pin);
+  // Rmotor.attach(Rmotor_pin);
 
   Serial.println("Ready");
   //vesc1.writeMicroseconds(1500);
@@ -113,48 +113,90 @@ void setup()
 
 
 void loop() {
+  
   update_wiimote();
 
-  if (safety && wiimote.available() > 0){
-    if (brake){
-      Mthrottle -= decelRate / 100;
-      if (Mthrottle<ppmMid) Mthrottle = ppmMid;
+    // standard forward/back controls
+    // change acceleration values at the top
+    if (safety){
+      if (brake){
+        Mthrottle -= decelRate / 100;
+        if (Mthrottle<ppmMid) Mthrottle = ppmMid;
+      }
+      else if (accel){
+        Mthrottle += (accelRate + (boost ? accelRate : 0))/100;
+        if (Mthrottle>ppmMax) Mthrottle=ppmMax;
+      }
     }
-    else if (accel){
-      Mthrottle += (accelRate + (boost ? accelRate : 0))/100;
-      if (Mthrottle>ppmMax) Mthrottle=ppmMax;
+    else{
+      Mthrottle = 1500;
     }
-  }
-  else{
-    Mthrottle = 1500;
-  }
 
-  if (wiiAccel < wiimMid-wiimDead || wiiAccel > wiimMid+wiimDead){
-    if (wiiAccel < wiimMin) wiiAccel = wiimMin;
-    if (wiiAccel > wiimMax) wiiAccel = wiimMax;
 
     double steeringValue;
-
-    if (wiiAccel < wiimMid) {
-        // turning left
-        steeringValue = -1 + (wiiAccel - wiimMin) / (wiimMid - wiimMin);
-    } else {
-        // turning right
-        steeringValue = (wiiAccel - wiimMid) / (wiimMax - wiimMid);
+    if (wiiPos < 1){
+      Serial.println("Wiimote doing something bad");
+      Mthrottle = 1500;
+      Lthrottle = 1500;
+      Rthrottle = 1500;
     }
 
-    double mult_ratio = maxTurnRatio * steeringValue;
 
-    Lthrottle = 
-  }
-  else{
-    Lthrottle = Mthrottle;
-    Rthrottle = Mthrottle;
-  }
+    else{
+      Serial.printf("wiiPos: %.1f\n", wiiPos);
+      if (wiiPos < wiimMid-wiimDead || wiiPos > wiimMid+wiimDead){
+          if (wiiPos < wiimMin) wiiPos = wiimMin;
+          if (wiiPos > wiimMax) wiiPos = wiimMax;
+          bool isLeft;
 
-  Serial.printf("throttle L|R: %.1f|%.1f", Lthrottle, Rthrottle);
-  //Lmotor.writeMicroseconds(Lthrottle);
-  //Rmotor.writeMicroseconds(Rthrottle);
+          if (wiiPos > wiimMid+wiimDead) {
+            isLeft = true;
+            // Steering left
+            // maxTurnRatio < steeringValue < 1 (percent)
+            // 1 = turn the slower side at 100% power, lower it is, slower the other side spins
+            // If closer to the resting value, output 1; if closer to max turn, output maxTurnRatio
+
+            // all the way = 0
+            // none = 1
+            // wiimMax = 152
+            // wiimMin = 102
+            // wiimMid = 127.5
+            float ratio = 1 - (wiiPos - wiimMid) / (wiimMid - wiimMin);
+            steeringValue = ratio;
+          } 
+          else if (wiiPos < wiimMid-wiimDead){
+            isLeft = false;
+            // Steering right
+            // If closer to the resting value, output 1; if closer to max turn, output maxTurnRatio
+            float ratio = 1 + (wiiPos - wiimMid) / (wiimMax - wiimMid);
+            steeringValue = ratio;
+          }
+
+          
+          double small_throttle = (fabs(steeringValue) * (Mthrottle - ppmMid))+ppmMid;
+          if (small_throttle<ppmMid) small_throttle = ppmMid;
+
+          if (isLeft){
+            Lthrottle = small_throttle;
+            Rthrottle = Mthrottle;
+          }
+          else{
+            Lthrottle = Mthrottle;
+            Rthrottle = small_throttle;
+          }
+        }
+        else{
+          steeringValue = 1;
+          Lthrottle = Mthrottle;
+          Rthrottle = Mthrottle;
+        }
+      }
+
+    Serial.printf("throttle L|R: %.1f|%.1f \n", Lthrottle, Rthrottle);
+    // Serial.printf("steeringValue = %.3f \n", steeringValue);
+    // Serial.println(wiiPos);
+    //Lmotor.writeMicroseconds(Lthrottle);
+    //Rmotor.writeMicroseconds(Rthrottle);
 
   delay(10); // wiimote limited to 100hz
 
