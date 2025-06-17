@@ -16,7 +16,15 @@ ESP32Wiimote wiimote;
 
 static bool logging = true;
 static long last_ms = 0;
+static long last_ms_signal = 0;
+static long last_r_signal_time = 0;
+static long last_l_signal_time = 0;
 static int num_run = 0, num_updates = 0;
+
+const int cycle_grow = 300
+const int cycle_hold = 450
+const int cycle_off = 750
+int cycle_length = cycle_grow + cycle_hold + cycle_off
 
 const double ppmMin = 1000, ppmMax = 2000, ppmMid = 1500;
 
@@ -35,7 +43,11 @@ bool wiimoteAvailable = false;
 
 double maxTurnRatio = 0.1; // when turning, one side spins at Mthrottle, second spins up to Mthrottle*maxTurnRatio
 
-bool accel, brake, safety, boost, reverse;
+bool accel, brake, safety, boost, reverse, lsignal, rsignal;
+
+//sig is -1 for left, 0 for none, 1 for right
+int sig;
+
 
 void update_wiimote()
 {
@@ -70,6 +82,8 @@ void update_wiimote()
             brake = c1;
             safety = cb;
             boost = ca;
+            lsignal = cleft
+            rsignal = cright
 
       
             // Serial.printf(", wiimote.axis: %3d/%3d/%3d", cur_accel.xAxis, cur_accel.yAxis, cur_accel.zAxis);
@@ -132,6 +146,52 @@ void loop() {
       Mthrottle = 1500;
     }
 
+    // handle turn signals
+
+    if(lsignal && rsignal) {
+      sig = 0
+    }
+    else if (lsignal) {
+      if (sig == 0 || sig == 1) {
+        sig == -1
+        last_l_signal_time = millis()
+      }
+      else {
+        sig = 0
+      }
+    }
+    else if (rsignal) {
+      if (sig == 0 || sig == -1) {
+        sig = 1
+        last_r_signal_time = millis()
+      }
+      else {
+        sig = 0
+      }
+    }
+    //now make them pulse on and off
+    bool temp[72];
+    //gotta zero it out n shit
+    if(sig == -1) {
+      long ms1 = millis();
+      long cycle_time = (ms1 - last_r_signal_time) % cycle_length;
+      if (cycle_time < cycle_grow) {
+        for(int i = 0; i < cycle_time * 72 / cycle_grow; i++) {
+          temp[i] = 1;
+        }
+      }
+      else if (cycle_time < cycle_hold) {
+        for(int i = 0; i < 72; i++) {
+          temp[i] = 1; 
+        }
+      }
+      else {
+        
+      }
+    }
+    
+    
+    
 
     double steeringValue;
     if (wiiPos < 1){
