@@ -26,6 +26,9 @@ CRGB ledR[LED_NUM];
 
 static bool logging = true;
 static long last_ms = 0;
+static long last_ms_signal = 0;
+static long last_r_signal_time = 0;
+static long last_l_signal_time = 0;
 static int num_run = 0, num_updates = 0;
 
 const double ppmMin = 1000, ppmMax = 1800, ppmMid = 1500;
@@ -266,6 +269,52 @@ void loop() {
   update_wiimote();
 
 
+    // handle turn signals
+
+    if(lsignal && rsignal) {
+      sig = 0
+    }
+    else if (lsignal) {
+      if (sig == 0 || sig == 1) {
+        sig == -1
+        last_l_signal_time = millis()
+      }
+      else {
+        sig = 0
+      }
+    }
+    else if (rsignal) {
+      if (sig == 0 || sig == -1) {
+        sig = 1
+        last_r_signal_time = millis()
+      }
+      else {
+        sig = 0
+      }
+    }
+    //now make them pulse on and off
+    bool temp[72];
+    //gotta zero it out n shit
+    if(sig == -1) {
+      long ms1 = millis();
+      long cycle_time = (ms1 - last_r_signal_time) % cycle_length;
+      if (cycle_time < cycle_grow) {
+        for(int i = 0; i < cycle_time * 72 / cycle_grow; i++) {
+          temp[i] = 1;
+        }
+      }
+      else if (cycle_time < cycle_hold) {
+        for(int i = 0; i < 72; i++) {
+          temp[i] = 1; 
+        }
+      }
+      else {
+        
+      }
+    }
+    
+    
+    
 
   if (safety) {
       /* -------- BRAKE ---------- */
