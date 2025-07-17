@@ -16,8 +16,8 @@
 
 ESP32Wiimote wiimote;
 
-const int LEDPIN_L = 26;
-const int LEDPIN_R = 27;
+const int LEDPIN_L = 32;
+const int LEDPIN_R = 33;
 
 const int LED_NUM = 72;
 
@@ -66,6 +66,7 @@ static bool leftArmed  = false;    // true = wheel has gone deep left
 
 bool left_detect = false, right_detect = false;
 
+// standard rainbow pattern
 static void ledRainbow(CRGB ledL[])
 {
     const uint8_t speed = 1;
@@ -81,6 +82,8 @@ static void ledRainbow(CRGB ledL[])
         ledL[i]     = CHSV(hue, 255, 255);
     }
 }
+
+//4th july red white blue pattern
 // static void ledRainbow(CRGB ledL[])
 // {
 //     const uint8_t speed = 1;
@@ -267,53 +270,6 @@ void loop() {
   cur_millis = millis();
   
   update_wiimote();
-
-
-    // handle turn signals
-
-    if(lsignal && rsignal) {
-      sig = 0
-    }
-    else if (lsignal) {
-      if (sig == 0 || sig == 1) {
-        sig == -1
-        last_l_signal_time = millis()
-      }
-      else {
-        sig = 0
-      }
-    }
-    else if (rsignal) {
-      if (sig == 0 || sig == -1) {
-        sig = 1
-        last_r_signal_time = millis()
-      }
-      else {
-        sig = 0
-      }
-    }
-    //now make them pulse on and off
-    bool temp[72];
-    //gotta zero it out n shit
-    if(sig == -1) {
-      long ms1 = millis();
-      long cycle_time = (ms1 - last_r_signal_time) % cycle_length;
-      if (cycle_time < cycle_grow) {
-        for(int i = 0; i < cycle_time * 72 / cycle_grow; i++) {
-          temp[i] = 1;
-        }
-      }
-      else if (cycle_time < cycle_hold) {
-        for(int i = 0; i < 72; i++) {
-          temp[i] = 1; 
-        }
-      }
-      else {
-        
-      }
-    }
-    
-    
     
 
   if (safety) {
